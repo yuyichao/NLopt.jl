@@ -347,6 +347,20 @@ function test_ScalarNonlinearFunction_derivative_free()
     return
 end
 
+function test_ListOfSupportedNonlinearOperators()
+    model = NLopt.Optimizer()
+    ops = MOI.get(model, MOI.ListOfSupportedNonlinearOperators())
+    @test ops isa Vector{Symbol}
+    @test :|| in ops
+    @test :ifelse in ops
+    @test :sin in ops
+    @test !(:f in ops)
+    f(x) = x^2
+    MOI.set(model, MOI.UserDefinedFunction(:f, 1), (f,))
+    @test :f in MOI.get(model, MOI.ListOfSupportedNonlinearOperators())
+    return
+end
+
 end  # module
 
 TestMOIWrapper.runtests()
