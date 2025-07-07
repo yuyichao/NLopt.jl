@@ -685,6 +685,28 @@ function MOI.set(
     return
 end
 
+### MOI.UserDefinedFunction
+
+MOI.supports(model::Optimizer, ::MOI.UserDefinedFunction) = true
+
+function MOI.set(model::Optimizer, attr::MOI.UserDefinedFunction, args)
+    _init_nlp_model(model)
+    MOI.Nonlinear.register_operator(
+        model.nlp_model,
+        attr.name,
+        attr.arity,
+        args...,
+    )
+    return
+end
+
+### MOI.ListOfSupportedNonlinearOperators
+
+function MOI.get(model::Optimizer, attr::MOI.ListOfSupportedNonlinearOperators)
+    _init_nlp_model(model)
+    return MOI.get(model.nlp_model, attr)
+end
+
 # optimize!
 
 function _fill_gradient(grad, x, f::MOI.VariableIndex)
