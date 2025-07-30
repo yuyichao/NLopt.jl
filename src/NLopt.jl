@@ -183,9 +183,24 @@ mutable struct Opt
 
     exception::Any
 
+    # These cached arrays should only be used in the callback
+    # if their pointer value and size matches the ones passed into the callback
+    x_cache::Vector{Cdouble}
+    res_cache::Vector{Cdouble}
+    grad_cache::Vector{Cdouble}
+    grad2_cache::Matrix{Cdouble}
+
     function Opt(p::Ptr{Cvoid})
         @assert p != C_NULL
-        opt = new(p, Array{Callback_Data}(undef, 1), nothing)
+        opt = new(
+            p,
+            Array{Callback_Data}(undef, 1),
+            nothing,
+            _EMPTY_VECTOR,
+            _EMPTY_VECTOR,
+            _EMPTY_VECTOR,
+            _EMPTY_MATRIX,
+        )
         finalizer(destroy, opt)
         return opt
     end
@@ -462,10 +477,24 @@ srand_time() = nlopt_srand_time()
 # Objective function:
 
 const _EMPTY_VECTOR = Cdouble[]
+const _EMPTY_MATRIX = zeros(Cdouble, 0, 0)
 
 @inline function _get_empty_vector()
     @assert isempty(_EMPTY_VECTOR) "Builtin empty vector modified by user"
     return _EMPTY_VECTOR
+end
+
+@inline function _wrap_pointer(o::Opt, p, sz, field, isgrad)
+    cache = getfield(o, field)
+    if p == pointer(cache) && size(cache) == sz
+        return cache
+    elseif isgrad && p == C_NULL
+        return length(sz) == 1 ? _get_empty_vector() : _EMPTY_MATRIX
+    else
+        cache = unsafe_wrap(Array, p, sz)
+        setfield!(o, field, cache)
+        return cache
+    end
 end
 
 function nlopt_callback_wrapper(
@@ -474,16 +503,13 @@ function nlopt_callback_wrapper(
     p_grad::Ptr{Cdouble},
     d::Callback_Data,
 )::Cdouble
-    x = unsafe_wrap(Array, p_x, (n,))
-    grad = if p_grad == C_NULL
-        _get_empty_vector()
-    else
-        unsafe_wrap(Array, p_grad, (n,))
-    end
+    o = d.o
+    x = _wrap_pointer(o, p_x, (n,), :x_cache, false)
+    grad = _wrap_pointer(o, p_grad, (n,), :grad_cache, true)
     try
         return d.f(x, grad)
     catch e
-        _catch_forced_stop(d.o, e)
+        _catch_forced_stop(o, e)
     end
     return NaN
 end
@@ -545,8 +571,6 @@ end
 ############################################################################
 # Vector-valued constraints
 
-const _EMPTY_MATRIX = zeros(Cdouble, 0, 0)
-
 function nlopt_vcallback_wrapper(
     m::Cuint,
     p_res::Ptr{Cdouble},
@@ -555,17 +579,14 @@ function nlopt_vcallback_wrapper(
     p_grad::Ptr{Cdouble},
     d::Callback_Data,
 )
-    res = unsafe_wrap(Array, p_res, (m,))
-    x = unsafe_wrap(Array, p_x, (n,))
-    grad = if p_grad == C_NULL
-        _EMPTY_MATRIX
-    else
-        unsafe_wrap(Array, p_grad, (n, m))
-    end
+    o = d.o
+    res = _wrap_pointer(o, p_res, (m,), :res_cache, false)
+    x = _wrap_pointer(o, p_x, (n,), :x_cache, false)
+    grad = _wrap_pointer(o, p_grad, (n, m), :grad2_cache, true)
     try
         d.f(res, x, grad)
     catch e
-        _catch_forced_stop(d.o, e)
+        _catch_forced_stop(o, e)
     end
     return
 end
