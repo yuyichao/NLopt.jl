@@ -156,10 +156,18 @@ Base.:(==)(r::Result, s::Symbol) = s == r
 ############################################################################
 # wrapper around nlopt_opt type
 
+macro const_field(expr)
+    if VERSION >= v"1.8.0-"
+        Expr(:const, esc(expr))
+    else
+        esc(expr)
+    end
+end
+
 # pass both f and o to the callback so that we can handle exceptions
 mutable struct Callback_Data{F,O}
-    f::F
-    o::O # Opt
+    @const_field f::F
+    @const_field o::O # Opt
 end
 
 function Base.unsafe_convert(::Type{Ptr{Cvoid}}, c::Callback_Data)
@@ -171,7 +179,7 @@ mutable struct Opt
 
     # need to store callback data for objective and constraints in
     # Opt so that they aren't garbage-collected.  cb[1] is the objective.
-    cb::Vector{Callback_Data}
+    @const_field cb::Vector{Callback_Data}
 
     exception::Any
 
@@ -222,8 +230,8 @@ function Base.copy(opt::Opt)
     end
     new_opt = Opt(p)
     opt_callbacks = getfield(opt, :cb)
-    new_callbacks = Vector{Callback_Data}(undef, length(opt_callbacks))
-    setfield!(new_opt, :cb, new_callbacks)
+    new_callbacks = getfield(new_opt, :cb)
+    resize!(new_callbacks, length(opt_callbacks))
     old_to_new_pointer_map = Dict{Ptr{Cvoid},Ptr{Cvoid}}(C_NULL => C_NULL)
     for i in 1:length(opt_callbacks)
         if isassigned(opt_callbacks, i)
