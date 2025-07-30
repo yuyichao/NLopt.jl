@@ -484,7 +484,13 @@ const _EMPTY_MATRIX = zeros(Cdouble, 0, 0)
     return _EMPTY_VECTOR
 end
 
-@inline function _wrap_pointer(o::Opt, p, sz, field, isgrad)
+@inline function _wrap_pointer(
+    o::Opt,
+    p::Ptr,
+    sz::Tuple,
+    field::Symbol,
+    isgrad::Bool,
+)
     cache = getfield(o, field)
     if p == pointer(cache) && size(cache) == sz
         return cache
